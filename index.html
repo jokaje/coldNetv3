@@ -1,0 +1,926 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>coldNet</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @keyframes spin {
+            to {
+                transform: rotate(360deg);
+            }
+        }
+        .spinner {
+            display: inline-block;
+            width: 1em;
+            height: 1em;
+            vertical-align: -0.125em;
+            border: 0.15em solid currentColor;
+            border-right-color: transparent;
+            border-radius: 50%;
+            animation: spin .75s linear infinite;
+        }
+        body.modal-open {
+            overflow: hidden;
+        }
+        .chat-item-actions {
+            opacity: 0;
+            transition: opacity 0.2s ease-in-out;
+        }
+        .chat-item:hover .chat-item-actions {
+            opacity: 1;
+        }
+        .recording-pulse, .listening-pulse {
+            animation: pulse 1.5s infinite;
+            border-radius: 9999px;
+        }
+        .recording-pulse { /* Rot, wenn aktiv aufgenommen wird */
+             outline: 2px solid #ef4444;
+        }
+        .listening-pulse { /* Blau, wenn nur zugehört wird */
+            outline: 2px solid #3b82f6;
+        }
+        @keyframes pulse {
+            0% {
+                box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7);
+            }
+            70% {
+                box-shadow: 0 0 0 10px rgba(239, 68, 68, 0);
+            }
+            100% {
+                box-shadow: 0 0 0 0 rgba(239, 68, 68, 0);
+            }
+        }
+        .listening-pulse {
+             animation-name: pulse-blue;
+        }
+        @keyframes pulse-blue {
+            0% {
+                box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.7);
+            }
+            70% {
+                box-shadow: 0 0 0 10px rgba(59, 130, 246, 0);
+            }
+            100% {
+                box-shadow: 0 0 0 0 rgba(59, 130, 246, 0);
+            }
+        }
+    </style>
+</head>
+<body class="bg-gray-900 text-white font-sans flex items-center justify-center min-h-screen">
+
+<div id="app-container" class="w-full h-full">
+    <!-- Login View -->
+    <div id="login-view" class="w-full h-screen flex flex-col items-center justify-center p-8">
+        <h1 class="text-5xl font-bold text-blue-400 mb-8">coldNet</h1>
+        <form id="login-form" class="w-full max-w-sm">
+            <p id="login-error" class="text-red-400 text-center mb-4 h-5"></p>
+            <input type="text" id="login-username" placeholder="Benutzername" class="w-full p-3 mb-4 bg-gray-700 rounded-lg border border-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500" required>
+            <input type="password" id="login-password" placeholder="Passwort" class="w-full p-3 mb-6 bg-gray-700 rounded-lg border border-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500" required>
+            <button type="submit" class="w-full p-3 bg-blue-600 rounded-lg font-semibold hover:bg-blue-700 transition-colors">Login</button>
+        </form>
+        <p class="mt-6">Noch kein Konto? <a href="#" id="show-register" class="text-blue-400 hover:underline">Registrieren</a></p>
+    </div>
+
+    <!-- Register View -->
+    <div id="register-view" class="hidden w-full h-screen flex-col items-center justify-center p-8">
+        <h1 class="text-5xl font-bold text-blue-400 mb-8">Konto erstellen</h1>
+        <form id="register-form" class="w-full max-w-sm">
+            <p id="register-error" class="text-red-400 text-center mb-4 h-5"></p>
+            <input type="text" id="register-username" placeholder="Benutzername" class="w-full p-3 mb-4 bg-gray-700 rounded-lg border border-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500" required>
+            <input type="password" id="register-password" placeholder="Passwort" class="w-full p-3 mb-6 bg-gray-700 rounded-lg border border-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500" required>
+            <button type="submit" class="w-full p-3 bg-green-600 rounded-lg font-semibold hover:bg-green-700 transition-colors">Registrieren</button>
+        </form>
+        <p class="mt-6">Bereits ein Konto? <a href="#" id="show-login" class="text-blue-400 hover:underline">Zum Login</a></p>
+    </div>
+
+    <!-- Dashboard View -->
+    <div id="dashboard-view" class="hidden w-full h-screen flex-col">
+        <div class="p-4 flex justify-between items-center border-b border-gray-700 bg-gray-800 shadow-md">
+            <h1 class="text-2xl font-bold">Dashboard</h1>
+            <button id="dashboard-logout-button" class="text-gray-400 hover:text-white p-2 rounded-lg hover:bg-gray-700" title="Logout">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" /></svg>
+            </button>
+        </div>
+        <div class="flex-grow p-8 flex flex-col items-center justify-center">
+            <h2 class="text-3xl mb-8">Anwendungen</h2>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div id="start-chat-app" class="bg-gray-700 p-8 rounded-xl shadow-lg hover:bg-gray-600 hover:scale-105 transition-transform cursor-pointer flex flex-col items-center text-center">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-16 w-16 mb-4 text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" /></svg>
+                    <h3 class="text-2xl font-bold">coldChat</h3>
+                    <p class="text-gray-400 mt-2">Private Konversationen mit dem coldBot führen.</p>
+                </div>
+                <div id="start-profile-app" class="bg-gray-700 p-8 rounded-xl shadow-lg hover:bg-gray-600 hover:scale-105 transition-transform cursor-pointer flex flex-col items-center text-center">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-16 w-16 mb-4 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>
+                    <h3 class="text-2xl font-bold">Profil</h3>
+                    <p class="text-gray-400 mt-2">Persönliche Daten und Passwort verwalten.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal-Overlay -->
+    <div id="modal-overlay" class="hidden fixed inset-0 bg-black bg-opacity-60 flex items-start justify-center p-4 overflow-y-auto">
+
+        <!-- Chat App View -->
+        <div id="chat-app-view" class="hidden w-11/12 max-w-6xl h-5/6 bg-gray-800 rounded-xl shadow-2xl flex-col relative my-8">
+            <div class="p-4 border-b border-gray-700 flex justify-between items-center">
+                <h2 class="text-xl font-bold">coldChat</h2>
+                <button class="close-modal-button text-gray-400 hover:text-white p-2 rounded-full hover:bg-gray-700" title="Schließen">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
+                </button>
+            </div>
+            <div class="flex h-full overflow-hidden">
+                <div class="w-1/3 border-r border-gray-700 flex flex-col">
+                    <div id="chat-list" class="flex-grow overflow-y-auto p-2"></div>
+                    <div class="p-4 border-t border-gray-700">
+                        <button id="new-chat-button" class="w-full p-3 bg-blue-600 rounded-lg font-semibold hover:bg-blue-700 transition-colors">Neuer Chat</button>
+                    </div>
+                </div>
+                <div class="w-2/3 flex flex-col bg-gray-900">
+                    <div id="chat-welcome" class="flex flex-col items-center justify-center h-full text-gray-500">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-24 w-24 mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" /></svg>
+                        <p class="text-xl">Wähle einen Chat aus oder erstelle einen neuen.</p>
+                    </div>
+                    <div id="chat-window" class="hidden flex flex-col h-full">
+                        <div class="p-4 border-b border-gray-700"><h3 id="chat-title" class="text-lg font-semibold"></h3></div>
+                        <div id="message-list" class="flex-grow p-4 overflow-y-auto flex flex-col space-y-4"></div>
+                        <div id="image-preview-container" class="hidden items-center bg-gray-700 p-2 rounded-t-lg">
+                            <img id="image-preview" src="" alt="Bildvorschau" class="w-16 h-16 object-cover rounded-md">
+                            <p id="image-preview-text" class="ml-4 text-sm text-gray-300 flex-1">...</p>
+                            <button id="remove-image-button" class="p-2 text-gray-400 hover:text-white">&times;</button>
+                        </div>
+                        <!-- *** START: MODIFIED INPUT AREA *** -->
+                        <div id="chat-input-area" class="p-4 border-t border-gray-700">
+                            <div class="flex justify-center mb-2">
+                                <button id="toggle-mode-button" class="px-3 py-1 text-xs bg-gray-700 rounded-lg hover:bg-gray-600 transition-colors">Sprachmodus</button>
+                            </div>
+                            
+                            <!-- Text Input Container -->
+                            <div id="text-input-container" class="flex items-center">
+                                <form id="message-form" class="flex items-center w-full">
+                                    <input type="file" id="image-upload-input" class="hidden" accept="image/*">
+                                    <button type="button" id="attach-image-button" class="p-3 bg-gray-700 rounded-l-lg hover:bg-gray-600" title="Bild anhängen">
+                                        <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" /></svg>
+                                    </button>
+                                    <input type="text" id="message-input" placeholder="Nachricht an coldBot..." class="w-full p-3 bg-gray-800 border-t border-b border-gray-700 focus:outline-none" autocomplete="off">
+                                    <button type="submit" class="p-3 bg-blue-600 rounded-r-lg hover:bg-blue-700" title="Senden">
+                                        <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" /></svg>
+                                    </button>
+                                </form>
+                            </div>
+
+                            <!-- Voice Input Container -->
+                            <div id="voice-input-container" class="hidden items-center justify-center pt-2 flex-col">
+                                <button id="record-button" class="p-4 bg-gray-700 rounded-full hover:bg-gray-600 transition-all duration-300 mb-2" title="Sprachkonversation starten/stoppen">
+                                    <svg class="w-8 h-8" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M7 4a3 3 0 016 0v4a3 3 0 11-6 0V4zm4 10.93A7.001 7.001 0 0017 8a1 1 0 10-2 0A5 5 0 017 8a1 1 0 10-2 0 7.001 7.001 0 006 6.93V17H9a1 1 0 100 2h2a1 1 0 100-2v-2.07z" clip-rule="evenodd"></path></svg>
+                                </button>
+                            </div>
+                            
+                            <!-- Status Line -->
+                            <div id="status-text" class="text-center text-xs text-gray-500 mt-2 h-4"></div>
+                        </div>
+                        <!-- *** END: MODIFIED INPUT AREA *** -->
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Profile App View -->
+        <div id="profile-app-view" class="hidden w-full max-w-2xl bg-gray-800 rounded-xl shadow-2xl flex-col relative my-8">
+            <div class="p-4 border-b border-gray-700 flex justify-between items-center">
+                <h2 class="text-xl font-bold">Profil bearbeiten</h2>
+                <button class="close-modal-button text-gray-400 hover:text-white p-2 rounded-full hover:bg-gray-700" title="Schließen">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
+                </button>
+            </div>
+            <div class="p-6 space-y-6 overflow-y-auto">
+                <div class="flex items-center space-x-6">
+                    <img id="profile-picture-preview" src="https://placehold.co/96x96/4A5568/E2E8F0?text=Profilbild" class="w-24 h-24 rounded-full object-cover bg-gray-700" alt="Profilbild">
+                    <div>
+                        <input type="file" id="profile-picture-input" class="hidden" accept="image/*">
+                        <button id="change-picture-button" class="px-4 py-2 bg-blue-600 rounded-lg font-semibold hover:bg-blue-700">Bild ändern</button>
+                        <p class="text-xs text-gray-400 mt-2">PNG oder JPG, max. 2MB.</p>
+                    </div>
+                </div>
+
+                <form id="profile-details-form">
+                    <h3 class="text-lg font-semibold mb-2 border-b border-gray-700 pb-2">Persönliche Daten</h3>
+                    <div class="space-y-4 mt-4">
+                        <div>
+                            <label for="profile-username" class="block text-sm font-medium text-gray-400">Benutzername</label>
+                            <input type="text" id="profile-username" class="w-full mt-1 p-2 bg-gray-900 rounded-md border border-gray-700" disabled>
+                        </div>
+                        <div>
+                            <label for="profile-real-name" class="block text-sm font-medium text-gray-400">Echter Name</label>
+                            <input type="text" id="profile-real-name" placeholder="Max Mustermann" class="w-full mt-1 p-2 bg-gray-700 rounded-md border border-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                        </div>
+                        <div>
+                            <label for="profile-birth-date" class="block text-sm font-medium text-gray-400">Geburtsdatum</label>
+                            <input type="date" id="profile-birth-date" class="w-full mt-1 p-2 bg-gray-700 rounded-md border border-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                        </div>
+                    </div>
+                    <div class="mt-6">
+                        <button type="submit" class="px-5 py-2 bg-green-600 rounded-lg font-semibold hover:bg-green-700">Profil speichern</button>
+                        <span id="profile-save-status" class="ml-4 text-sm"></span>
+                    </div>
+                </form>
+
+                <form id="password-change-form">
+                    <h3 class="text-lg font-semibold mb-2 border-b border-gray-700 pb-2">Passwort ändern</h3>
+                    <div class="space-y-4 mt-4">
+                        <div>
+                            <label for="password-current" class="block text-sm font-medium text-gray-400">Aktuelles Passwort</label>
+                            <input type="password" id="password-current" class="w-full mt-1 p-2 bg-gray-700 rounded-md border border-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500" required>
+                        </div>
+                        <div>
+                            <label for="password-new" class="block text-sm font-medium text-gray-400">Neues Passwort</label>
+                            <input type="password" id="password-new" class="w-full mt-1 p-2 bg-gray-700 rounded-md border border-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500" required>
+                        </div>
+                    </div>
+                    <div class="mt-6">
+                        <button type="submit" class="px-5 py-2 bg-red-600 rounded-lg font-semibold hover:bg-red-700">Passwort ändern</button>
+                        <span id="password-change-status" class="ml-4 text-sm"></span>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+    </div>
+
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+    // Konfiguration
+    const API_URL = ''; 
+
+    // App-Status
+    const appState = {
+        currentChatId: null,
+        analyzedImageDescription: null,
+        attachedImageBase64: null,
+        isAnalyzing: false,
+        profilePictureBase64: null,
+        // *** START: MODIFIED VOICE STATE ***
+        chatMode: 'text', // 'text' oder 'voice'
+        mediaRecorder: null,
+        audioChunks: [],
+        isListening: false,
+        isRecording: false,
+        audioContext: null,
+        analyser: null,
+        microphoneStream: null,
+        silenceTimeout: null,
+        animationFrameId: null,
+        // *** END: MODIFIED VOICE STATE ***
+    };
+    
+    // Views
+    const views = {
+        login: document.getElementById('login-view'),
+        register: document.getElementById('register-view'),
+        dashboard: document.getElementById('dashboard-view'),
+    };
+
+    // Modals
+    const modalOverlay = document.getElementById('modal-overlay');
+    const chatAppView = document.getElementById('chat-app-view');
+    const profileAppView = document.getElementById('profile-app-view');
+
+    // Auth/Forms
+    const loginForm = document.getElementById('login-form');
+    const registerForm = document.getElementById('register-form');
+    const loginError = document.getElementById('login-error');
+    const registerError = document.getElementById('register-error');
+
+    // Dashboard
+    const startChatAppBtn = document.getElementById('start-chat-app');
+    const startProfileAppBtn = document.getElementById('start-profile-app');
+    const dashboardLogoutButton = document.getElementById('dashboard-logout-button');
+
+    // Chat UI
+    const chatList = document.getElementById('chat-list');
+    const chatWelcome = document.getElementById('chat-welcome');
+    const chatWindow = document.getElementById('chat-window');
+    const chatTitle = document.getElementById('chat-title');
+    const messageList = document.getElementById('message-list');
+    const newChatButton = document.getElementById('new-chat-button');
+
+    // Message input
+    const messageForm = document.getElementById('message-form');
+    const messageInput = document.getElementById('message-input');
+    const imageUploadInput = document.getElementById('image-upload-input');
+    const attachImageButton = document.getElementById('attach-image-button');
+    const imagePreviewContainer = document.getElementById('image-preview-container');
+    const imagePreview = document.getElementById('image-preview');
+    const imagePreviewText = document.getElementById('image-preview-text');
+    const removeImageButton = document.getElementById('remove-image-button');
+
+    // Voice input
+    const toggleModeButton = document.getElementById('toggle-mode-button');
+    const textInputContainer = document.getElementById('text-input-container');
+    const voiceInputContainer = document.getElementById('voice-input-container');
+    const recordButton = document.getElementById('record-button');
+    const statusText = document.getElementById('status-text');
+
+    // Profile
+    const profileDetailsForm = document.getElementById('profile-details-form');
+    const passwordChangeForm = document.getElementById('password-change-form');
+    const profileUsername = document.getElementById('profile-username');
+    const profileRealName = document.getElementById('profile-real-name');
+    const profileBirthDate = document.getElementById('profile-birth-date');
+    const profileSaveStatus = document.getElementById('profile-save-status');
+    const passwordChangeStatus = document.getElementById('password-change-status');
+    const changePictureButton = document.getElementById('change-picture-button');
+    const profilePictureInput = document.getElementById('profile-picture-input');
+    const profilePicturePreview = document.getElementById('profile-picture-preview');
+
+    // Token
+    const getToken = () => sessionStorage.getItem('coldNetToken');
+    const setToken = (t) => sessionStorage.setItem('coldNetToken', t);
+    const removeToken = () => sessionStorage.removeItem('coldNetToken');
+
+    // Views
+    function showView(name) {
+        Object.values(views).forEach(v => v.classList.add('hidden'));
+        if (views[name]) {
+            views[name].classList.remove('hidden');
+            views[name].classList.add('flex');
+        }
+        hideModal();
+    }
+
+    function showModal(appView) {
+        chatAppView.classList.add('hidden');
+        profileAppView.classList.add('hidden');
+        appView.classList.remove('hidden');
+        appView.classList.add('flex');
+        modalOverlay.classList.remove('hidden');
+        document.body.classList.add('modal-open');
+    }
+
+    function hideModal() {
+        modalOverlay.classList.add('hidden');
+        document.body.classList.remove('modal-open');
+        // *** MODIFIED: Ensure microphone is released on close ***
+        if (appState.isListening) {
+            stopLiveConversation();
+        }
+    }
+
+    function setStatus(text = '', isError = false) {
+        statusText.textContent = text;
+        statusText.classList.toggle('text-red-400', !!isError);
+        statusText.classList.toggle('text-gray-500', !isError);
+    }
+    
+    async function apiFetch(endpoint, options = {}) {
+        const token = getToken();
+        const headers = options.headers ? { ...options.headers } : {};
+        if (!headers['Content-Type'] && !(options.body instanceof FormData)) {
+            headers['Content-Type'] = 'application/json';
+        }
+        if (token) headers['Authorization'] = `Bearer ${token}`;
+        const res = await fetch(API_URL + endpoint, { ...options, headers });
+        if (!res.ok) {
+            let detail = 'Fehler';
+            try {
+                const j = await res.json();
+                detail = j.detail || JSON.stringify(j);
+            } catch {}
+            throw new Error(detail);
+        }
+        const ct = res.headers.get('content-type') || '';
+        if (ct.includes('application/json')) return res.json();
+        if (ct.includes('audio/')) return res.blob();
+        return {};
+    }
+
+    function renderMessage(message) {
+        const isUser = message.sender === 'user';
+        const container = document.createElement('div');
+        container.className = `flex flex-col ${isUser ? 'items-end' : 'items-start'}`;
+
+        if (message.image_data) {
+            const img = document.createElement('img');
+            img.src = message.image_data;
+            img.className = 'max-w-xs rounded-lg mb-2';
+            container.appendChild(img);
+        }
+
+        if (message.content) {
+            const bubble = document.createElement('div');
+            bubble.className = `max-w-xs md:max-w-md lg:max-w-lg px-4 py-2 rounded-2xl ${isUser ? 'bg-blue-600' : 'bg-gray-700'}`;
+            bubble.textContent = message.content;
+            container.appendChild(bubble);
+        }
+
+        messageList.appendChild(container);
+        messageList.scrollTop = messageList.scrollHeight;
+    }
+
+    async function loadChat(chatId) {
+        appState.currentChatId = chatId;
+        document.querySelectorAll('.chat-item').forEach(el => el.classList.remove('bg-blue-900/50'));
+        const chatItem = document.querySelector(`[data-chat-id='${chatId}']`);
+        if (chatItem) {
+            chatItem.classList.add('bg-blue-900/50');
+            chatTitle.textContent = chatItem.querySelector('.chat-title-text').textContent;
+        }
+
+        chatWelcome.classList.add('hidden');
+        chatWindow.classList.remove('hidden');
+        chatWindow.classList.add('flex');
+        messageList.innerHTML = '<div class="spinner border-4 border-t-4 border-gray-600 border-t-blue-500 rounded-full w-8 h-8 mx-auto"></div>';
+
+        try {
+            const data = await apiFetch(`/api/chats/${chatId}`);
+            messageList.innerHTML = '';
+            data.messages.forEach(renderMessage);
+        } catch (e) {
+            messageList.innerHTML = `<p class="text-red-400 text-center">Fehler: ${e.message}</p>`;
+        }
+    }
+
+    async function loadChatList() {
+        try {
+            const chats = await apiFetch('/api/chats');
+            chatList.innerHTML = '';
+            if (chats.length === 0) {
+                chatList.innerHTML = '<p class="text-gray-500 text-center p-4">Keine Chats gefunden.</p>';
+                return;
+            }
+            chats.forEach(chat => {
+                const item = document.createElement('div');
+                item.className = `chat-item p-3 rounded-lg cursor-pointer flex items-center justify-between group ${chat.is_pinned ? 'bg-gray-700/50' : 'hover:bg-gray-700'}`;
+                item.dataset.chatId = chat.id;
+
+                const pinIcon = chat.is_pinned ? `<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-yellow-400 mr-2" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 1a1 1 0 011 1v2.586l1.293-1.293a1 1 0 111.414 1.414L11.414 7H14a1 1 0 110 2h-2.586l2.293 2.293a1 1 0 11-1.414 1.414L10 10.414V18a1 1 0 11-2 0v-7.586l-2.293 2.293a1 1 0 11-1.414-1.414L7 9H4.5a1 1 0 110-2H7l-2.293-2.293a1 1 0 011.414-1.414L8 4.586V2a1 1 0 011-1z" clip-rule="evenodd" /></svg>` : '';
+
+                item.innerHTML = `
+                    <div class="flex items-center overflow-hidden">
+                        ${pinIcon}
+                        <span class="chat-title-text truncate">${chat.title}</span>
+                    </div>
+                    <div class="chat-item-actions flex items-center space-x-1">
+                        <button class="pin-btn p-1 hover:bg-gray-600 rounded-full" title="Anpinnen">${chat.is_pinned ? 'Lösen' : 'Anpinnen'}</button>
+                        <button class="edit-btn p-1 hover:bg-gray-600 rounded-full" title="Umbenennen">✏️</button>
+                        <button class="delete-btn p-1 hover:bg-gray-600 rounded-full" title="Löschen">🗑️</button>
+                    </div>
+                `;
+
+                item.addEventListener('click', (e) => {
+                    if (!e.target.closest('button')) loadChat(chat.id);
+                });
+
+                item.querySelector('.delete-btn').addEventListener('click', (e) => { e.stopPropagation(); deleteChat(chat.id); });
+                item.querySelector('.edit-btn').addEventListener('click', (e) => { e.stopPropagation(); editChatTitle(chat.id, chat.title); });
+                item.querySelector('.pin-btn').addEventListener('click', async (e) => {
+                    e.stopPropagation();
+                    try {
+                        await apiFetch(`/api/chats/${chat.id}`, { method: 'PUT', body: JSON.stringify({ is_pinned: !chat.is_pinned }) });
+                        await loadChatList();
+                    } catch (err) { alert(`Fehler beim Anpinnen: ${err.message}`); }
+                });
+                chatList.appendChild(item);
+            });
+        } catch (e) {
+            if (String(e.message).includes('401')) logout();
+            console.error(e);
+        }
+    }
+
+    async function deleteChat(chatId) {
+        if (!confirm("Soll dieser Chat wirklich gelöscht werden?")) return;
+        try {
+            await apiFetch(`/api/chats/${chatId}`, { method: 'DELETE' });
+            if (appState.currentChatId === chatId) {
+                chatWelcome.classList.remove('hidden');
+                chatWindow.classList.add('hidden');
+                appState.currentChatId = null;
+            }
+            await loadChatList();
+        } catch (e) { alert(`Fehler beim Löschen: ${e.message}`); }
+    }
+
+    async function editChatTitle(chatId, oldTitle) {
+        const newTitle = prompt("Gib einen neuen Titel für den Chat ein:", oldTitle);
+        if (!newTitle || newTitle.trim() === '' || newTitle === oldTitle) return;
+        try {
+            await apiFetch(`/api/chats/${chatId}`, { method: 'PUT', body: JSON.stringify({ title: newTitle }) });
+            await loadChatList();
+            if (appState.currentChatId === chatId) chatTitle.textContent = newTitle;
+        } catch (e) { alert(`Fehler beim Umbenennen: ${e.message}`); }
+    }
+
+    function clearImageAttachment() {
+        appState.analyzedImageDescription = null;
+        appState.attachedImageBase64 = null;
+        imageUploadInput.value = '';
+        imagePreviewContainer.classList.add('hidden');
+        imagePreviewText.textContent = '';
+    }
+
+    async function analyzeImage(file) {
+        if (!file || appState.isAnalyzing) return;
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            appState.attachedImageBase64 = e.target.result;
+            imagePreview.src = e.target.result;
+        };
+        reader.readAsDataURL(file);
+        imagePreviewContainer.classList.remove('hidden');
+        imagePreviewText.innerHTML = '<span class="spinner mr-2"></span> Analysiere Bild...';
+        setStatus('Analysiere Bild...');
+        appState.isAnalyzing = true;
+        try {
+            const formData = new FormData();
+            formData.append("image_file", file);
+            const result = await apiFetch('/api/describe-image/', { method: 'POST', body: formData });
+            appState.analyzedImageDescription = result.description || null;
+            imagePreviewText.textContent = file.name;
+            setStatus('Bild erfolgreich analysiert.');
+        } catch (e) {
+            imagePreviewText.innerHTML = `<span class="text-red-400">Analyse fehlgeschlagen.</span>`;
+            setTimeout(clearImageAttachment, 3000);
+            setStatus('', true);
+        } finally {
+            appState.isAnalyzing = false;
+        }
+    }
+    
+    // *** START: REFACTORED CHAT/VOICE LOGIC ***
+
+    // Step 5: Send text to bot (called by text input OR voice transcription)
+    async function handleChat(text) {
+        if (!text || !appState.currentChatId) return;
+
+        const userText = text;
+        const imageDesc = appState.analyzedImageDescription;
+        const imageBase64 = appState.attachedImageBase64;
+
+        let finalPrompt = '';
+        if (imageDesc && userText) {
+            finalPrompt = `Basierend auf der folgenden Szene: "${imageDesc}". Beantworte die Frage: "${userText}"`;
+        } else if (imageDesc && !userText) {
+            finalPrompt = `Beschreibe die folgende Szene detailliert und lebhaft: "${imageDesc}"`;
+        } else {
+            finalPrompt = userText;
+        }
+
+        renderMessage({ sender: 'user', content: userText, image_data: imageBase64 });
+        messageInput.value = '';
+        clearImageAttachment();
+        setStatus('Bot antwortet...');
+
+        try {
+            const botMessage = await apiFetch(`/api/chats/${appState.currentChatId}/messages`, {
+                method: 'POST',
+                body: JSON.stringify({ final_prompt: finalPrompt, user_text: userText, image_base_64: imageBase64 })
+            });
+            renderMessage(botMessage);
+            setStatus('');
+
+            // If in voice mode, synthesize and play the response
+            if (appState.chatMode === 'voice' && botMessage.content) {
+                await handleSynthesis(botMessage.content);
+            }
+        } catch (e) {
+            renderMessage({ sender: 'coldBot', content: `Fehler: ${e.message}` });
+            setStatus('Fehler beim Senden der Nachricht.', true);
+        }
+    }
+
+    // Step 4: Send recorded audio for transcription
+    async function handleTranscription(audioBlob) {
+        setStatus('Verarbeite Audio...');
+        try {
+            const formData = new FormData();
+            formData.append('file', audioBlob, 'recording.webm');
+            const data = await apiFetch('/api/stt/transcribe', { method: 'POST', body: formData });
+            
+            if (data.text && data.text.trim() !== "") {
+                await handleChat(data.text);
+            } else {
+                setStatus('Keine Sprache erkannt.');
+                setTimeout(() => {
+                    if (appState.isListening) detectSpeech(); // Start listening again
+                }, 1000);
+            }
+        } catch (e) {
+            setStatus('Fehler bei der Transkription.', true);
+            if (appState.isListening) detectSpeech(); // Start listening again on error
+        }
+    }
+    
+    // Step 6: Send bot's text response for speech synthesis
+    async function handleSynthesis(text) {
+        setStatus('Generiere Audio...');
+        try {
+            const audioBlob = await apiFetch('/api/tts/synthesize', {
+                method: 'POST',
+                body: JSON.stringify({ text })
+            });
+            await playAudio(audioBlob);
+        } catch (e) {
+            setStatus('Fehler bei der Sprachsynthese.', true);
+            if (appState.isListening) detectSpeech(); // Continue listening loop on error
+        }
+    }
+
+    // Step 7: Play synthesized audio and then restart listening loop
+    async function playAudio(audioBlob) {
+        return new Promise((resolve) => {
+            const audio = new Audio(URL.createObjectURL(audioBlob));
+            audio.onended = () => {
+                URL.revokeObjectURL(audio.src);
+                if (appState.isListening) {
+                    detectSpeech(); // Listen for the next user input
+                }
+                resolve();
+            };
+            audio.play().catch(e => {
+                setStatus('Fehler beim Abspielen.', true);
+                console.error("Audio playback error:", e);
+                if (appState.isListening) detectSpeech(); // Continue listening loop on error
+                resolve();
+            });
+            setStatus('Spiele Antwort ab...');
+        });
+    }
+
+    // Step 3: VAD - Detect when user is speaking
+    function detectSpeech() {
+        if (!appState.isListening || !appState.analyser) return;
+
+        setStatus('Höre zu...');
+        recordButton.classList.remove('recording-pulse');
+        recordButton.classList.add('listening-pulse');
+
+        const dataArray = new Uint8Array(appState.analyser.frequencyBinCount);
+        let isSpeaking = false;
+
+        const checkVolume = () => {
+            if (!appState.isListening) return; // Stop if conversation was ended
+
+            appState.analyser.getByteFrequencyData(dataArray);
+            let sum = dataArray.reduce((a, b) => a + b, 0);
+            let average = sum / dataArray.length;
+
+            if (average > 20) { // Threshold for speech detection
+                if (!appState.isRecording) {
+                    appState.isRecording = true;
+                    appState.audioChunks = [];
+                    appState.mediaRecorder.start();
+                    setStatus('Aufnahme...');
+                    recordButton.classList.remove('listening-pulse');
+                    recordButton.classList.add('recording-pulse');
+                }
+                isSpeaking = true;
+                clearTimeout(appState.silenceTimeout);
+            } else if (appState.isRecording && isSpeaking) {
+                // User was speaking, now it's quiet. Wait a moment before stopping.
+                isSpeaking = false;
+                clearTimeout(appState.silenceTimeout);
+                appState.silenceTimeout = setTimeout(() => {
+                    if (appState.isRecording) {
+                        appState.mediaRecorder.stop();
+                        appState.isRecording = false;
+                        // onstop event will handle the rest
+                    }
+                }, 1000); // 1 second of silence to stop
+            }
+            appState.animationFrameId = requestAnimationFrame(checkVolume);
+        };
+        checkVolume();
+    }
+
+    // Step 2: Start the whole voice conversation loop
+    async function startLiveConversation() {
+        if (appState.isListening) {
+            stopLiveConversation();
+            return;
+        }
+
+        try {
+            appState.microphoneStream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false, channelCount: 1 } });
+            
+            appState.audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            const source = appState.audioContext.createMediaStreamSource(appState.microphoneStream);
+            appState.analyser = appState.audioContext.createAnalyser();
+            appState.analyser.fftSize = 512;
+            source.connect(appState.analyser);
+
+            appState.mediaRecorder = new MediaRecorder(appState.microphoneStream);
+            appState.mediaRecorder.onstop = () => {
+                const audioBlob = new Blob(appState.audioChunks, { type: 'audio/webm' });
+                if (audioBlob.size > 1000) { // Only process if there's some data
+                    handleTranscription(audioBlob);
+                } else {
+                    // If recording was too short, just start listening again
+                    detectSpeech();
+                }
+            };
+            appState.mediaRecorder.ondataavailable = event => {
+                appState.audioChunks.push(event.data);
+            };
+
+            appState.isListening = true;
+            detectSpeech(); // Start the VAD loop
+
+        } catch (err) {
+            setStatus('Mikrofon-Zugriff fehlgeschlagen.', true);
+            console.error("Error starting live conversation:", err);
+        }
+    }
+    
+    // Step 1: Toggle between text and voice modes
+    function toggleConversationMode() {
+        if (appState.chatMode === 'text') {
+            appState.chatMode = 'voice';
+            toggleModeButton.textContent = 'Textmodus';
+            textInputContainer.classList.add('hidden');
+            voiceInputContainer.classList.remove('hidden');
+            voiceInputContainer.classList.add('flex');
+        } else {
+            appState.chatMode = 'text';
+            stopLiveConversation(); // Ensure mic is off when switching back
+            toggleModeButton.textContent = 'Sprachmodus';
+            voiceInputContainer.classList.add('hidden');
+            voiceInputContainer.classList.remove('hidden');
+            textInputContainer.classList.remove('hidden');
+        }
+    }
+
+    // Cleanup function
+    function stopLiveConversation() {
+        if (!appState.isListening) return;
+
+        appState.isListening = false;
+        if (appState.isRecording) {
+            appState.mediaRecorder.stop();
+            appState.isRecording = false;
+        }
+        
+        if (appState.animationFrameId) cancelAnimationFrame(appState.animationFrameId);
+        if (appState.silenceTimeout) clearTimeout(appState.silenceTimeout);
+
+        appState.microphoneStream?.getTracks().forEach(track => track.stop());
+        appState.audioContext?.close();
+        
+        appState.microphoneStream = null;
+        appState.audioContext = null;
+        appState.analyser = null;
+
+        recordButton.classList.remove('recording-pulse', 'listening-pulse');
+        setStatus('');
+    }
+
+    // *** END: REFACTORED CHAT/VOICE LOGIC ***
+
+
+    // --- Login/Register/Profile (Unchanged) ---
+    async function handleLogin() {
+        loginError.textContent = '';
+        const formData = new URLSearchParams();
+        formData.append('username', document.getElementById('login-username').value);
+        formData.append('password', document.getElementById('login-password').value);
+        try {
+            const tokenData = await apiFetch('/api/token', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: formData
+            });
+            if (tokenData && tokenData.access_token) {
+                setToken(tokenData.access_token);
+                showView('dashboard');
+            } else { throw new Error('Ungültige Antwort vom Server erhalten.'); }
+        } catch (e) { loginError.textContent = e.message; }
+    }
+
+    async function handleRegister() {
+        registerError.textContent = '';
+        const payload = {
+            username: document.getElementById('register-username').value,
+            password: document.getElementById('register-password').value
+        };
+        try {
+            await apiFetch('/api/register', { method: 'POST', body: JSON.stringify(payload) });
+            showView('login');
+            loginError.textContent = 'Registrierung erfolgreich! Bitte einloggen.';
+        } catch (e) { registerError.textContent = e.message; }
+    }
+
+    function logout() {
+        removeToken();
+        hideModal();
+        showView('login');
+    }
+
+    async function openProfileApp() {
+        try {
+            const profile = await apiFetch('/api/profile');
+            profileUsername.value = profile.username;
+            profileRealName.value = profile.real_name || '';
+            profileBirthDate.value = profile.birth_date || '';
+            if (profile.profile_picture) {
+                profilePicturePreview.src = profile.profile_picture;
+                appState.profilePictureBase64 = profile.profile_picture;
+            } else {
+                profilePicturePreview.src = `https://placehold.co/96x96/4A5568/E2E8F0?text=${profile.username.charAt(0)}`;
+                appState.profilePictureBase64 = null;
+            }
+            showModal(profileAppView);
+        } catch (e) { alert(`Fehler beim Laden des Profils: ${e.message}`); }
+    }
+
+    async function handleProfileUpdate() {
+        profileSaveStatus.textContent = 'Speichern...';
+        const payload = {
+            real_name: profileRealName.value,
+            birth_date: profileBirthDate.value || null,
+            profile_picture: appState.profilePictureBase64
+        };
+        try {
+            await apiFetch('/api/profile', { method: 'PUT', body: JSON.stringify(payload) });
+            profileSaveStatus.textContent = 'Gespeichert!';
+            setTimeout(() => profileSaveStatus.textContent = '', 2000);
+        } catch (e) { profileSaveStatus.textContent = `Fehler: ${e.message}`; }
+    }
+
+    async function handlePasswordChange() {
+        passwordChangeStatus.textContent = 'Ändere...';
+        const currentPassword = document.getElementById('password-current').value;
+        const newPassword = document.getElementById('password-new').value;
+        if (!currentPassword || !newPassword) {
+            passwordChangeStatus.textContent = 'Bitte alle Felder ausfüllen.';
+            return;
+        }
+        try {
+            await apiFetch('/api/profile/password', {
+                method: 'PUT',
+                body: JSON.stringify({ current_password: currentPassword, new_password: newPassword })
+            });
+            passwordChangeStatus.textContent = 'Passwort geändert!';
+            passwordChangeForm.reset();
+            setTimeout(() => passwordChangeStatus.textContent = '', 2000);
+        } catch (e) { passwordChangeStatus.textContent = `Fehler: ${e.message}`; }
+    }
+    
+    // --- Event Listeners ---
+    document.getElementById('show-register').addEventListener('click', e => { e.preventDefault(); showView('register'); });
+    document.getElementById('show-login').addEventListener('click', e => { e.preventDefault(); showView('login'); });
+    dashboardLogoutButton.addEventListener('click', () => { logout(); });
+    startChatAppBtn.addEventListener('click', () => { showModal(chatAppView); loadChatList(); chatWelcome.classList.remove('hidden'); chatWindow.classList.add('hidden'); });
+    startProfileAppBtn.addEventListener('click', openProfileApp);
+    document.querySelectorAll('.close-modal-button').forEach(btn => btn.addEventListener('click', hideModal));
+    newChatButton.addEventListener('click', async () => {
+        try {
+            const newChat = await apiFetch('/api/chats', { method: 'POST' });
+            await loadChatList();
+            loadChat(newChat.id);
+        } catch (e) { alert(`Fehler: ${e.message}`); }
+    });
+    attachImageButton.addEventListener('click', () => imageUploadInput.click());
+    removeImageButton.addEventListener('click', clearImageAttachment);
+    imageUploadInput.addEventListener('change', e => analyzeImage(e.target.files[0]));
+    
+    // Modified form submission to use the new handler
+    messageForm.addEventListener('submit', e => {
+        e.preventDefault();
+        handleChat(messageInput.value);
+    });
+    
+    loginForm.addEventListener('submit', e => { e.preventDefault(); handleLogin(); });
+    registerForm.addEventListener('submit', e => { e.preventDefault(); handleRegister(); });
+    profileDetailsForm.addEventListener('submit', e => { e.preventDefault(); handleProfileUpdate(); });
+    passwordChangeForm.addEventListener('submit', e => { e.preventDefault(); handlePasswordChange(); });
+    changePictureButton.addEventListener('click', () => profilePictureInput.click());
+    profilePictureInput.addEventListener('change', (event) => {
+        const file = event.target.files[0];
+        if (file) {
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                appState.profilePictureBase64 = e.target.result;
+                profilePicturePreview.src = e.target.result;
+            };
+            reader.readAsDataURL(file);
+        }
+    });
+
+    // *** NEW EVENT LISTENERS FOR VOICE MODE ***
+    toggleModeButton.addEventListener('click', toggleConversationMode);
+    recordButton.addEventListener('click', startLiveConversation);
+
+    // --- Init ---
+    if (getToken()) {
+        showView('dashboard');
+    } else {
+        showView('login');
+    }
+});
+</script>
+</body>
+</html>
