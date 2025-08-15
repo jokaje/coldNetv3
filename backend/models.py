@@ -8,8 +8,9 @@ from sqlalchemy.orm import sessionmaker, relationship
 SQLALCHEMY_DATABASE_URL = "sqlite:///./coldnet.db"
 engine = create_engine(
     SQLALCHEMY_DATABASE_URL, 
-    connect_args={"check_same_thread": False, "timeout": 15}
+    connect_args={"check_same_thread": False, "timeout": 300}
 )
+# WICHTIG: SessionLocal wird jetzt auch in main.py verwendet
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
@@ -19,10 +20,9 @@ class User(Base):
     id = Column(Integer, primary_key=True, index=True)
     username = Column(String, unique=True, index=True)
     hashed_password = Column(String)
-    # NEUE PROFILFELDER
     real_name = Column(String, nullable=True)
     birth_date = Column(Date, nullable=True)
-    profile_picture = Column(Text, nullable=True) # Für Base64-kodierte Bilder
+    profile_picture = Column(Text, nullable=True)
     
     chats = relationship("Chat", back_populates="owner")
 
@@ -35,7 +35,12 @@ class Chat(Base):
     ai_chat_id = Column(Integer, index=True, nullable=False)
     
     owner = relationship("User", back_populates="chats")
-    messages = relationship("Message", back_populates="chat", cascade="all, delete-orphan")
+    messages = relationship(
+        "Message", 
+        back_populates="chat", 
+        cascade="all, delete-orphan",
+        order_by="Message.id"
+    )
 
 class Message(Base):
     __tablename__ = "messages"
